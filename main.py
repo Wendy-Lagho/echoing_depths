@@ -2,6 +2,7 @@ import pygame
 import numpy as np
 import math
 import random
+import pygame.mixer
 
 # Screen and Game Constants
 SCREEN_WIDTH = 800  # Reduced screen width
@@ -52,7 +53,14 @@ class LightEngine:
         self.light_color = (255, 255, 200)  # Warm, slightly yellow light
         self.flicker_intensity = 10  # Light radius variation
         self.noise_time = 0
-    
+
+        # Initialize sound
+        pygame.mixer.init()
+        self.buzz_sound = pygame.mixer.Sound('buzz.wav')  # Load your sound file
+        self.buzz_sound.set_volume(0)  # Start with volume at 0
+        self.light_timer = 0  # Timer for light duration
+        self.light_duration = 10  # Duration in seconds before darkness
+        
     def create_light_surface(self, player_pos):
         """Create a dynamic light surface with radial gradient"""
         # Create a surface for the light effect
@@ -95,6 +103,9 @@ class EchoingDepthsGame:
         
         # Initialize level
         self.setup_level()
+
+        self.light_timer = 0  # Initialize light_timer
+        self.light_duration = 100
     
     def setup_level(self):
         """Initialize a new game level"""
@@ -172,48 +183,64 @@ class EchoingDepthsGame:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
-            
+
+            # Update light timer
+            if self.light_timer < self.light_duration:
+                self.light_timer += 1 / FPS  # Increment timer based on frame rate
+
             # Clear screen with dark background
             self.screen.fill(BACKGROUND_COLOR)
-            
+
             # Handle player movement
             self.handle_movement()
-            
+
             # Draw walls
             for wall in self.wall_list:
                 pygame.draw.rect(self.screen, WALL_COLOR, wall)
-            
+
             # Draw exit
-            pygame.draw.rect(self.screen, EXIT_COLOR, 
-                             pygame.Rect(self.exit_pos.x - GRID_SIZE//4, 
-                                         self.exit_pos.y - GRID_SIZE//4, 
-                                         GRID_SIZE//2, 
-                                         GRID_SIZE//2))
-            
+            exit_rect = pygame.Rect(self.exit_pos.x - GRID_SIZE//4, 
+                                    self.exit_pos.y - GRID_SIZE//4, 
+                                    GRID_SIZE//2, 
+                                    GRID_SIZE//2)
+            pygame.draw.rect(self.screen, EXIT_COLOR, exit_rect)
+
             # Create dark overlay
             dark_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             dark_overlay.fill(DARK_OVERLAY_COLOR)
-            
-            # Create and apply light effect
-            light_surface = self.light_engine.create_light_surface(
-                (int(self.player_pos.x), int(self.player_pos.y))
-            )
-            dark_overlay.blit(light_surface, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
-            
+
+            # Create and apply light effect if within duration
+            if self.light_timer < self.light_duration:
+                light_surface = self.light_engine.create_light_surface(
+                    (int(self.player_pos.x), int(self.player_pos.y))
+                )
+                dark_overlay.blit(light_surface, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+
+                # Calculate distance to exit for sound
+                distance_to_exit = self.player_pos.distance_to(self.exit_pos)
+                max_distance = SCREEN_WIDTH  # Maximum distance for sound volume calculation
+                volume = max(0, min(1, 1 - (distance_to_exit / max_distance)) )  # Normalize volume
+                self.light_engine.buzz_sound.set_volume(volume)
+                self.light_engine.buzz_sound.play(-1)  # Loop the sound
+            else:
+                # If light duration has passed, stop the sound and set volume to 0
+                self.light_engine.buzz_sound.stop()
+                self.light_engine.buzz_sound.set_volume(0)
+
             # Draw player
             pygame.draw.rect(self.screen, PLAYER_COLOR, 
                              pygame.Rect(self.player_pos.x - GRID_SIZE//4, 
                                          self.player_pos.y - GRID_SIZE//4, 
                                          GRID_SIZE//2, 
                                          GRID_SIZE//2))
-            
-            # Apply dark overlay with light effect
+
+            # Apply dark overlay
             self.screen.blit(dark_overlay, (0, 0))
-            
+
             # Update display
             pygame.display.flip()
             self.clock.tick(FPS)
-        
+
         pygame.quit()
 
 def main():
