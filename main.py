@@ -1,14 +1,13 @@
 import pygame
 import numpy as np
 import math
-from noise import pnoise2
 import random
 
 # Screen and Game Constants
-SCREEN_WIDTH = 1200
-SCREEN_HEIGHT = 700
+SCREEN_WIDTH = 800  # Reduced screen width
+SCREEN_HEIGHT = 600  # Reduced screen height
 SCREEN_TITLE = "Echoing Depths: Sound-Navigated Maze Survival"
-GRID_SIZE = 50
+GRID_SIZE = 40  # Slightly smaller grid size
 MOVEMENT_SPEED = 3
 FPS = 60
 
@@ -17,19 +16,18 @@ WALL_COLOR = (50, 50, 50)
 PLAYER_COLOR = (255, 255, 255)
 EXIT_COLOR = (0, 255, 0)
 BACKGROUND_COLOR = (0, 0, 0)
+DARK_OVERLAY_COLOR = (0, 0, 0, 220)  # Darker, more opaque overlay
 
 class MazeGenerator:
     @staticmethod
     def generate_maze(width, height):
         """Generate a simplified maze with guaranteed paths"""
-        # Create a grid filled with walls
         maze = [['#' for _ in range(width)] for _ in range(height)]
         
         def in_bounds(x, y):
             return 0 <= x < width and 0 <= y < height
         
         def carve_passages(x, y):
-            # Carve out passages
             directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]
             random.shuffle(directions)
             
@@ -40,14 +38,45 @@ class MazeGenerator:
                     maze[ny][nx] = ' '
                     carve_passages(nx, ny)
         
-        # Start carving from the top left
         maze[1][1] = 'P'  # Player start
         carve_passages(1, 1)
         
-        # Place exit
         maze[height-2][width-2] = 'E'
         
         return [''.join(row) for row in maze]
+
+class LightEngine:
+    def __init__(self, screen_width, screen_height):
+        """Initialize light engine with dynamic light parameters"""
+        self.light_radius = 200  # Base light radius
+        self.light_color = (255, 255, 200)  # Warm, slightly yellow light
+        self.flicker_intensity = 10  # Light radius variation
+        self.noise_time = 0
+    
+    def create_light_surface(self, player_pos):
+        """Create a dynamic light surface with radial gradient"""
+        # Create a surface for the light effect
+        light_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        
+        # Add slight noise-based flickering
+        self.noise_time += 0.1
+        flicker = math.sin(self.noise_time) * self.flicker_intensity
+        current_radius = self.light_radius + flicker
+        
+        # Create radial gradient
+        for alpha in range(int(current_radius), 0, -5):
+            # Calculate alpha value for gradient (fade out)
+            gradient_alpha = int(255 * (1 - alpha / current_radius))
+            
+            # Create color with decreasing alpha
+            light_color = self.light_color + (gradient_alpha,)
+            
+            # Draw concentric circles with decreasing alpha
+            pygame.draw.circle(light_surface, light_color, 
+                               player_pos, 
+                               alpha)
+        
+        return light_surface
 
 class EchoingDepthsGame:
     def __init__(self):
@@ -61,18 +90,17 @@ class EchoingDepthsGame:
         self.player_pos = None
         self.exit_pos = None
         
+        # Light engine
+        self.light_engine = LightEngine(SCREEN_WIDTH, SCREEN_HEIGHT)
+        
         # Initialize level
         self.setup_level()
     
     def setup_level(self):
         """Initialize a new game level"""
         # Generate maze with more open spaces
-        maze = MazeGenerator.generate_maze(width=24, height=18)
+        maze = MazeGenerator.generate_maze(width=20, height=15)
         self.wall_list = []
-        
-        # Print maze for debugging
-        for row in maze:
-            print(row)
         
         for row_index, row in enumerate(maze):
             for col_index, cell in enumerate(row):
@@ -90,7 +118,6 @@ class EchoingDepthsGame:
                         x + GRID_SIZE // 2, 
                         y + GRID_SIZE // 2
                     )
-                    print(f"Player Start: {self.player_pos}")
                 
                 elif cell == 'E':
                     # Exit position
@@ -98,7 +125,6 @@ class EchoingDepthsGame:
                         x + GRID_SIZE // 2, 
                         y + GRID_SIZE // 2
                     )
-                    print(f"Exit Position: {self.exit_pos}")
     
     def handle_movement(self):
         """Handle player movement with collision detection"""
@@ -147,7 +173,7 @@ class EchoingDepthsGame:
                 if event.type == pygame.QUIT:
                     running = False
             
-            # Clear screen
+            # Clear screen with dark background
             self.screen.fill(BACKGROUND_COLOR)
             
             # Handle player movement
@@ -157,6 +183,23 @@ class EchoingDepthsGame:
             for wall in self.wall_list:
                 pygame.draw.rect(self.screen, WALL_COLOR, wall)
             
+            # Draw exit
+            pygame.draw.rect(self.screen, EXIT_COLOR, 
+                             pygame.Rect(self.exit_pos.x - GRID_SIZE//4, 
+                                         self.exit_pos.y - GRID_SIZE//4, 
+                                         GRID_SIZE//2, 
+                                         GRID_SIZE//2))
+            
+            # Create dark overlay
+            dark_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            dark_overlay.fill(DARK_OVERLAY_COLOR)
+            
+            # Create and apply light effect
+            light_surface = self.light_engine.create_light_surface(
+                (int(self.player_pos.x), int(self.player_pos.y))
+            )
+            dark_overlay.blit(light_surface, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
+            
             # Draw player
             pygame.draw.rect(self.screen, PLAYER_COLOR, 
                              pygame.Rect(self.player_pos.x - GRID_SIZE//4, 
@@ -164,12 +207,8 @@ class EchoingDepthsGame:
                                          GRID_SIZE//2, 
                                          GRID_SIZE//2))
             
-            # Draw exit
-            pygame.draw.rect(self.screen, EXIT_COLOR, 
-                             pygame.Rect(self.exit_pos.x - GRID_SIZE//4, 
-                                         self.exit_pos.y - GRID_SIZE//4, 
-                                         GRID_SIZE//2, 
-                                         GRID_SIZE//2))
+            # Apply dark overlay with light effect
+            self.screen.blit(dark_overlay, (0, 0))
             
             # Update display
             pygame.display.flip()
