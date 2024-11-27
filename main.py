@@ -21,6 +21,11 @@ EXIT_COLOR = (50, 255, 50)  # Vibrant green
 BACKGROUND_COLOR = (10, 10, 20)  # Deep dark blue-black
 DARK_OVERLAY_COLOR = (0, 0, 0, 220)
 
+# Game States
+STATE_LOADING = 0
+STATE_PLAYING = 1
+STATE_GAME_OVER = 2
+
 class MazeGenerator:
     @staticmethod
     def generate_maze(width, height, complexity=0):
@@ -338,7 +343,7 @@ class EchoingDepthsGame:
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False
+                    return self.total_score
 
             if not self.game_over:
                 # Update light timer
@@ -424,7 +429,7 @@ class EchoingDepthsGame:
                 self.current_level += 1
                 if self.current_level > self.max_levels:
                     print(f"Congratulations! You've completed all levels with a total score of {self.total_score}!")
-                    running = False
+                    return self.total_score
                 else:
                     self.setup_level()
                     self.light_engine = LightEngine(SCREEN_WIDTH, SCREEN_HEIGHT, darkness_level=self.current_level)
@@ -433,12 +438,69 @@ class EchoingDepthsGame:
                     self.game_over = False
                     self.game_won = False
 
-        pygame.quit()
-
+        return self.total_score 
+    
 def main():
     """Main game initialization"""
-    game = EchoingDepthsGame()
-    game.play()
+    pygame.init()
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    pygame.display.set_caption(SCREEN_TITLE)
+    clock = pygame.time.Clock()
+    font = pygame.font.Font(None, 36)
+
+    # Load assets
+    try:
+        play_image = pygame.image.load(os.path.join('assets', 'play.png'))
+    except pygame.error:
+        print("Could not load play image. Using a placeholder.")
+        play_image = pygame.Surface((200, 100))
+        play_image.fill((100, 100, 100))
+
+    # Render texts
+    title_text = font.render(SCREEN_TITLE, True, (255, 255, 255))
+    start_text = font.render("Press SPACE to Start", True, (200, 200, 200))
+
+    # Initial game state
+    game_state = STATE_LOADING
+    total_score = 0  # Track total score across game sessions
+
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:
+                    if game_state in [STATE_LOADING, STATE_GAME_OVER]:
+                        # Start a new game
+                        game = EchoingDepthsGame()
+                        game.play()
+                        
+                        # Update total score
+                        total_score += game.total_score
+                        
+                        # Always go to game over screen after game ends
+                        game_state = STATE_GAME_OVER
+
+        if game_state == STATE_LOADING:
+            screen.fill(BACKGROUND_COLOR)
+            screen.blit(play_image, ((SCREEN_WIDTH - play_image.get_width()) // 2, (SCREEN_HEIGHT - play_image.get_height()) // 2))
+            screen.blit(title_text, ((SCREEN_WIDTH - title_text.get_width()) // 2, 50))
+            screen.blit(start_text, ((SCREEN_WIDTH - start_text.get_width()) // 2, SCREEN_HEIGHT - 100))
+        elif game_state == STATE_GAME_OVER:
+            screen.fill(BACKGROUND_COLOR)
+            game_over_text = font.render("Game Over", True, (255, 0, 0))
+            final_score_text = font.render(f"Total Score: {total_score}", True, (255, 255, 255))
+            restart_text = font.render("Press SPACE to Restart", True, (200, 200, 200))
+            
+            screen.blit(game_over_text, ((SCREEN_WIDTH - game_over_text.get_width()) // 2, 50))
+            screen.blit(final_score_text, ((SCREEN_WIDTH - final_score_text.get_width()) // 2, SCREEN_HEIGHT // 2))
+            screen.blit(restart_text, ((SCREEN_WIDTH - restart_text.get_width()) // 2, SCREEN_HEIGHT - 100))
+
+        pygame.display.flip()
+        clock.tick(FPS)
+
+    pygame.quit()
 
 if __name__ == "__main__":
     main()
