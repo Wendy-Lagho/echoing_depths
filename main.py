@@ -63,7 +63,7 @@ class LightEngine:
         
         try:
             # Load buzzing sound for sound-based navigation
-            self.buzz_sound = pygame.mixer.Sound('buzz.wav')
+            self.buzz_sound = pygame.mixer.Sound('spook.wav')
         except pygame.error:
             # If sound loading fails, create a silent placeholder sound
             print("Warning: Could not load 'buzz.wav'. Using a silent sound.")
