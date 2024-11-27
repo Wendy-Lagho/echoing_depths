@@ -21,7 +21,7 @@ Echoing Depths is a unique maze survival game where players navigate through dar
 
 1. **Clone the repository**:
     ```sh
-    git clone https://github.com/yourusername/echoing-depths.git
+    git clone https://github.com/Wendy-Lagho/echoing_depths.git
     cd echoing-depths
     ```
 
@@ -55,15 +55,4 @@ Echoing Depths is a unique maze survival game where players navigate through dar
 - [pygame](http://_vscodecontentref_/0)
 - [numpy](http://_vscodecontentref_/1)
 
-## License
 
-This project is licensed under the MIT License.
-
-## Acknowledgements
-
-- Thanks to the Pygame community for their excellent library and support.
-- Special thanks to all contributors and testers.
-
-## Contributing
-
-Contributions are welcome! Please fork the repository and submit a pull request for any enhancements or bug fixes.
