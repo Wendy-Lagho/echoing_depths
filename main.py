@@ -52,50 +52,55 @@ class MazeGenerator:
 
 class LightEngine:
     def __init__(self, screen_width, screen_height, darkness_level=1):
-        """Initialize light engine with more dynamic light parameters"""
-        self.light_radius = max(50, 200 - (darkness_level * 50))
-        self.light_color = (255, 240, 200)  # Warm, slightly yellow light
-        self.flicker_intensity = 15
-        self.noise_time = 0
+        """Initialize light engine to simulate the player's limited vision in the dark."""
+        self.light_radius = max(50, 200 - (darkness_level * 50)) # Set the light radius based on the darkness level, affecting visibility
+        self.light_color = (255, 240, 200)  # Warm yellowish light
+        self.flicker_intensity = 15  # Intensity of the light flickering effect
+        self.noise_time = 0  # Track time to control flickering movement
 
+        # Initialize sound mixer
         pygame.mixer.init()
         
         try:
+            # Load buzzing sound for sound-based navigation
             self.buzz_sound = pygame.mixer.Sound('buzz.wav')
         except pygame.error:
+            # If sound loading fails, create a silent placeholder sound
             print("Warning: Could not load 'buzz.wav'. Using a silent sound.")
             self.buzz_sound = pygame.mixer.Sound(buffer=bytes(1000))
         
+        # Initially mute the buzz sound
         self.buzz_sound.set_volume(0)
-        self.light_timer = 0
-        self.light_duration = 20  # Initial light duration set to 20 seconds
-        
+        self.light_timer = 0  # Timer to control how long the light lasts
+        self.light_duration = 20  # Initial light duration in seconds
+
     def create_light_surface(self, player_pos):
-        """Create a more organic light surface with soft edges and glow"""
-        light_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        """Create a light source centered around the player with dynamic flickering."""
+        light_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)  # Surface with alpha transparency
         
-        self.noise_time += 0.1
-        # More pronounced flicker with sine and cosine for organic movement
+        self.noise_time += 0.1  # Increment time to animate flickering
+        # Calculate the flickering offset based on sine and cosine waves for smooth variation
         flicker_x = math.sin(self.noise_time) * self.flicker_intensity
         flicker_y = math.cos(self.noise_time) * self.flicker_intensity
-        current_radius = self.light_radius + abs(flicker_x)
+        current_radius = self.light_radius + abs(flicker_x)  # Adjust radius based on flickering
         
-        # Create multiple layers of gradually transparent circles
+        # Draw gradually transparent light circles to simulate a soft glow
         for alpha in range(int(current_radius), 0, -10):
-            gradient_alpha = int(255 * (1 - alpha / current_radius))
-            light_color = self.light_color + (gradient_alpha,)
+            gradient_alpha = int(255 * (1 - alpha / current_radius))  # Calculate alpha transparency for gradient
+            light_color = self.light_color + (gradient_alpha,)  # Create a color with transparency
             
-            # Slightly offset the center for more organic feel
+            # Slight offset to the light center to make it feel less rigid
             offset_pos = (
                 player_pos[0] + flicker_x * 0.1, 
                 player_pos[1] + flicker_y * 0.1
             )
             
+            # Draw the light circles at the player's position
             pygame.draw.circle(light_surface, light_color, 
                                offset_pos, 
                                alpha)
         
-        return light_surface
+        return light_surface  # Return the generated light surface
 
 class EchoingDepthsGame:
     def __init__(self, starting_level=1):
