@@ -3,26 +3,28 @@ import numpy as np
 import math
 import random
 import pygame.mixer
+import os
+import time
 
 # Screen and Game Constants
-SCREEN_WIDTH = 800  # Reduced screen width
-SCREEN_HEIGHT = 600  # Reduced screen height
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
 SCREEN_TITLE = "Echoing Depths: Sound-Navigated Maze Survival"
-GRID_SIZE = 40  # Slightly smaller grid size
+GRID_SIZE = 40
 MOVEMENT_SPEED = 3
 FPS = 60
 
 # Color Constants
 WALL_COLOR = (50, 50, 50)
-PLAYER_COLOR = (255, 255, 255)
-EXIT_COLOR = (0, 255, 0)
-BACKGROUND_COLOR = (0, 0, 0)
-DARK_OVERLAY_COLOR = (0, 0, 0, 220)  # Darker, more opaque overlay
+PLAYER_COLOR = (200, 200, 255)  # Soft bluish white
+EXIT_COLOR = (50, 255, 50)  # Vibrant green
+BACKGROUND_COLOR = (10, 10, 20)  # Deep dark blue-black
+DARK_OVERLAY_COLOR = (0, 0, 0, 220)
 
 class MazeGenerator:
     @staticmethod
-    def generate_maze(width, height):
-        """Generate a simplified maze with guaranteed paths"""
+    def generate_maze(width, height, complexity=0):
+        """Generate a maze with optional complexity parameter and more organic feel"""
         maze = [['#' for _ in range(width)] for _ in range(height)]
         
         def in_bounds(x, y):
@@ -35,9 +37,11 @@ class MazeGenerator:
             for dx, dy in directions:
                 nx, ny = x + dx*2, y + dy*2
                 if in_bounds(nx, ny) and maze[ny][nx] == '#':
-                    maze[y+dy][x+dx] = ' '
-                    maze[ny][nx] = ' '
-                    carve_passages(nx, ny)
+                    # Add some randomness to path creation
+                    if random.random() > 0.1:  # 90% chance of carving
+                        maze[y+dy][x+dx] = ' '
+                        maze[ny][nx] = ' '
+                        carve_passages(nx, ny)
         
         maze[1][1] = 'P'  # Player start
         carve_passages(1, 1)
@@ -47,102 +51,197 @@ class MazeGenerator:
         return [''.join(row) for row in maze]
 
 class LightEngine:
-    def __init__(self, screen_width, screen_height):
-        """Initialize light engine with dynamic light parameters"""
-        self.light_radius = 200  # Base light radius
-        self.light_color = (255, 255, 200)  # Warm, slightly yellow light
-        self.flicker_intensity = 10  # Light radius variation
+    def __init__(self, screen_width, screen_height, darkness_level=1):
+        """Initialize light engine with more dynamic light parameters"""
+        self.light_radius = max(50, 200 - (darkness_level * 50))
+        self.light_color = (255, 240, 200)  # Warm, slightly yellow light
+        self.flicker_intensity = 15
         self.noise_time = 0
 
-        # Initialize sound
         pygame.mixer.init()
-        self.buzz_sound = pygame.mixer.Sound('buzz.wav')  # Load your sound file
-        self.buzz_sound.set_volume(0)  # Start with volume at 0
-        self.light_timer = 0  # Timer for light duration
-        self.light_duration = 10  # Duration in seconds before darkness
+        
+        try:
+            self.buzz_sound = pygame.mixer.Sound('buzz.wav')
+        except pygame.error:
+            print("Warning: Could not load 'buzz.wav'. Using a silent sound.")
+            self.buzz_sound = pygame.mixer.Sound(buffer=bytes(1000))
+        
+        self.buzz_sound.set_volume(0)
+        self.light_timer = 0
+        self.light_duration = 20  # Initial light duration set to 20 seconds
         
     def create_light_surface(self, player_pos):
-        """Create a dynamic light surface with radial gradient"""
-        # Create a surface for the light effect
+        """Create a more organic light surface with soft edges and glow"""
         light_surface = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         
-        # Add slight noise-based flickering
         self.noise_time += 0.1
-        flicker = math.sin(self.noise_time) * self.flicker_intensity
-        current_radius = self.light_radius + flicker
+        # More pronounced flicker with sine and cosine for organic movement
+        flicker_x = math.sin(self.noise_time) * self.flicker_intensity
+        flicker_y = math.cos(self.noise_time) * self.flicker_intensity
+        current_radius = self.light_radius + abs(flicker_x)
         
-        # Create radial gradient
-        for alpha in range(int(current_radius), 0, -5):
-            # Calculate alpha value for gradient (fade out)
+        # Create multiple layers of gradually transparent circles
+        for alpha in range(int(current_radius), 0, -10):
             gradient_alpha = int(255 * (1 - alpha / current_radius))
-            
-            # Create color with decreasing alpha
             light_color = self.light_color + (gradient_alpha,)
             
-            # Draw concentric circles with decreasing alpha
+            # Slightly offset the center for more organic feel
+            offset_pos = (
+                player_pos[0] + flicker_x * 0.1, 
+                player_pos[1] + flicker_y * 0.1
+            )
+            
             pygame.draw.circle(light_surface, light_color, 
-                               player_pos, 
+                               offset_pos, 
                                alpha)
         
         return light_surface
 
 class EchoingDepthsGame:
-    def __init__(self):
+    def __init__(self, starting_level=1):
         pygame.init()
         self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
         pygame.display.set_caption(SCREEN_TITLE)
         self.clock = pygame.time.Clock()
+        
+        # Game progression
+        self.current_level = starting_level
+        self.max_levels = 5  # Increased number of levels
         
         # Game state
         self.wall_list = []
         self.player_pos = None
         self.exit_pos = None
         
-        # Light engine
-        self.light_engine = LightEngine(SCREEN_WIDTH, SCREEN_HEIGHT)
+        # Font for level display
+        self.font = pygame.font.Font(None, 36)
+        
+        # Light engine with increasing darkness
+        self.light_engine = LightEngine(SCREEN_WIDTH, SCREEN_HEIGHT, 
+                                        darkness_level=self.current_level)
         
         # Initialize level
         self.setup_level()
 
-        self.light_timer = 0  # Initialize light_timer
-        self.light_duration = 100
+        self.light_timer = 0
+        self.light_duration = max(10, 20 - (self.current_level * 2))  # Decrease light duration with each level
+        
+        # Game result tracking
+        self.game_over = False
+        self.game_won = False
+
+        # Particle system for visual effects
+        self.particles = []
+
+        # Track start time
+        self.start_time = time.time()
+        
+        # Score tracking
+        self.total_score = 0
     
+    def create_wall_texture(self, wall_rect):
+        """Create a textured surface for walls"""
+        texture = pygame.Surface((GRID_SIZE, GRID_SIZE))
+        
+        # Base wall color with variation
+        base_color = (random.randint(40, 60), random.randint(40, 60), random.randint(40, 60))
+        texture.fill(base_color)
+        
+        # Add some noise/texture
+        for _ in range(50):
+            x = random.randint(0, GRID_SIZE-1)
+            y = random.randint(0, GRID_SIZE-1)
+            shade = random.randint(-20, 20)
+            noise_color = tuple(max(0, min(255, base_color[i] + shade)) for i in range(3))
+            texture.set_at((x, y), noise_color)
+        
+        return texture
+
     def setup_level(self):
-        """Initialize a new game level"""
-        # Generate maze with more open spaces
-        maze = MazeGenerator.generate_maze(width=20, height=15)
+        """Initialize a new game level with more complex generation"""
+        max_maze_width = SCREEN_WIDTH // GRID_SIZE
+        max_maze_height = SCREEN_HEIGHT // GRID_SIZE
+        
+        maze_width = min(20 + (self.current_level * 2), max_maze_width)
+        maze_height = min(15 + self.current_level, max_maze_height)
+        
+        maze = MazeGenerator.generate_maze(
+            width=maze_width, 
+            height=maze_height, 
+            complexity=self.current_level - 1
+        )
+        
         self.wall_list = []
+        self.wall_textures = []  # Store wall textures
         
         for row_index, row in enumerate(maze):
             for col_index, cell in enumerate(row):
-                # Calculate precise grid positions
                 x = col_index * GRID_SIZE
                 y = row_index * GRID_SIZE
                 
                 if cell == '#':
-                    # Create wall with full grid size
-                    self.wall_list.append(pygame.Rect(x, y, GRID_SIZE, GRID_SIZE))
+                    wall_rect = pygame.Rect(x, y, GRID_SIZE, GRID_SIZE)
+                    self.wall_list.append(wall_rect)
+                    # Create and store a unique texture for each wall
+                    self.wall_textures.append(self.create_wall_texture(wall_rect))
                 
                 elif cell == 'P':
-                    # Player start position (center of grid cell)
                     self.player_pos = pygame.Vector2(
                         x + GRID_SIZE // 2, 
                         y + GRID_SIZE // 2
                     )
                 
                 elif cell == 'E':
-                    # Exit position
                     self.exit_pos = pygame.Vector2(
                         x + GRID_SIZE // 2, 
                         y + GRID_SIZE // 2
                     )
+        
+        # Reset start time for the new level
+        self.start_time = time.time()
     
+    def create_player_particle(self):
+        """Create particles around the player for a glowing effect"""
+        for _ in range(2):
+            particle = {
+                'pos': pygame.Vector2(
+                    self.player_pos.x + random.uniform(-10, 10),
+                    self.player_pos.y + random.uniform(-10, 10)
+                ),
+                'velocity': pygame.Vector2(
+                    random.uniform(-1, 1),
+                    random.uniform(-1, 1)
+                ),
+                'color': (200, 200, 255, 100),
+                'size': random.uniform(2, 5),
+                'lifetime': random.uniform(0.5, 1.5)
+            }
+            self.particles.append(particle)
+    
+    def update_particles(self):
+        """Update and render particles"""
+        for particle in self.particles[:]:
+            particle['pos'] += particle['velocity']
+            particle['lifetime'] -= 1 / FPS
+            
+            if particle['lifetime'] <= 0:
+                self.particles.remove(particle)
+    
+    def draw_particles(self):
+        """Draw particles on screen"""
+        for particle in self.particles:
+            pygame.draw.circle(
+                self.screen, 
+                particle['color'], 
+                (int(particle['pos'].x), int(particle['pos'].y)), 
+                int(particle['size'])
+            )
+
     def handle_movement(self):
         """Handle player movement with collision detection"""
         keys = pygame.key.get_pressed()
         move_vector = pygame.Vector2(0, 0)
         
-        # Movement input
         if keys[pygame.K_UP] or keys[pygame.K_w]:
             move_vector.y -= MOVEMENT_SPEED
         if keys[pygame.K_DOWN] or keys[pygame.K_s]:
@@ -152,18 +251,14 @@ class EchoingDepthsGame:
         if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
             move_vector.x += MOVEMENT_SPEED
         
-        # No movement if no keys pressed
         if move_vector.length() == 0:
             return
         
-        # Normalize movement
         if move_vector.length() > 0:
             move_vector = move_vector.normalize() * MOVEMENT_SPEED
         
-        # Propose new position
         new_pos = self.player_pos + move_vector
         
-        # Create collision rect
         player_rect = pygame.Rect(
             new_pos.x - GRID_SIZE//4, 
             new_pos.y - GRID_SIZE//4, 
@@ -171,75 +266,167 @@ class EchoingDepthsGame:
             GRID_SIZE//2
         )
         
-        # Check for wall collisions
         if not any(player_rect.colliderect(wall) for wall in self.wall_list):
             self.player_pos = new_pos
+            # Create player movement particles
+            self.create_player_particle()
     
+    def check_level_completion(self):
+        """Check if the player has reached the exit"""
+        if self.player_pos.distance_to(self.exit_pos) < GRID_SIZE // 2:
+            self.game_won = True
+            self.game_over = True
+            print(f"Level {self.current_level} completed!")
+
+    def display_level_completion(self):
+        """Display level completion message with time taken and score"""
+        time_taken = time.time() - self.start_time
+        score = self.calculate_score(time_taken)
+        self.total_score += score
+        message = self.font.render(f"Level {self.current_level} Completed!", True, (255, 255, 255))
+        time_message = self.font.render(f"Time: {time_taken:.2f} seconds", True, (255, 255, 255))
+        score_message = self.font.render(f"Score: {score}", True, (255, 255, 255))
+        total_score_message = self.font.render(f"Total Score: {self.total_score}", True, (255, 255, 255))
+        
+        self.screen.blit(message, (SCREEN_WIDTH // 2 - message.get_width() // 2, SCREEN_HEIGHT // 2 - message.get_height() // 2 - 60))
+        self.screen.blit(time_message, (SCREEN_WIDTH // 2 - time_message.get_width() // 2, SCREEN_HEIGHT // 2 - time_message.get_height() // 2 - 20))
+        self.screen.blit(score_message, (SCREEN_WIDTH // 2 - score_message.get_width() // 2, SCREEN_HEIGHT // 2 - score_message.get_height() // 2 + 20))
+        self.screen.blit(total_score_message, (SCREEN_WIDTH // 2 - total_score_message.get_width() // 2, SCREEN_HEIGHT // 2 - total_score_message.get_height() // 2 + 60))
+        
+        pygame.display.flip()
+        pygame.time.wait(2000)  # Wait for 2 seconds
+
+    def display_game_over(self):
+        """Display game over message"""
+        message = self.font.render("Game Over! Time's up!", True, (255, 0, 0))
+        self.screen.blit(message, (SCREEN_WIDTH // 2 - message.get_width() // 2, SCREEN_HEIGHT // 2 - message.get_height() // 2))
+        pygame.display.flip()
+        pygame.time.wait(2000)  # Wait for 2 seconds
+
+    def calculate_score(self, time_taken):
+        """Calculate score based on time taken"""
+        if time_taken < 5:
+            return 100
+        elif time_taken < 10:
+            return 80
+        elif time_taken < 15:
+            return 60
+        elif time_taken < 20:
+            return 40
+        else:
+            return 20
+
+    def draw_hud(self):
+        """Draw the HUD with current level, score, and time"""
+        time_taken = time.time() - self.start_time
+        level_message = self.font.render(f"Level: {self.current_level}", True, (255, 255, 255))
+        score_message = self.font.render(f"Score: {self.total_score}", True, (255, 255, 255))
+        time_message = self.font.render(f"Time: {time_taken:.2f}", True, (255, 255, 255))
+        
+        self.screen.blit(level_message, (10, 10))
+        self.screen.blit(score_message, (10, 40))
+        self.screen.blit(time_message, (10, 70))
+
     def play(self):
         """Main game loop"""
         running = True
         while running:
-            # Handle events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
-            # Update light timer
-            if self.light_timer < self.light_duration:
-                self.light_timer += 1 / FPS  # Increment timer based on frame rate
+            if not self.game_over:
+                # Update light timer
+                if self.light_timer < self.light_duration:
+                    self.light_timer += 1 / FPS
 
-            # Clear screen with dark background
-            self.screen.fill(BACKGROUND_COLOR)
+                    # Sound guidance mechanics
+                    distance_to_exit = self.player_pos.distance_to(self.exit_pos)
+                    max_distance = SCREEN_WIDTH
+                    volume = max(0, min(1, 1 - (distance_to_exit / max_distance)))
+                    
+                    self.light_engine.buzz_sound.set_volume(volume)
+                    self.light_engine.buzz_sound.play(-1)
+                else:
+                    self.light_engine.buzz_sound.stop()
+                    self.game_over = True
+                    self.display_game_over()
+                    running = False
 
-            # Handle player movement
-            self.handle_movement()
+                # Check for level completion
+                self.check_level_completion()
 
-            # Draw walls
-            for wall in self.wall_list:
-                pygame.draw.rect(self.screen, WALL_COLOR, wall)
+                # Handle player movement
+                self.handle_movement()
 
-            # Draw exit
-            exit_rect = pygame.Rect(self.exit_pos.x - GRID_SIZE//4, 
-                                    self.exit_pos.y - GRID_SIZE//4, 
-                                    GRID_SIZE//2, 
-                                    GRID_SIZE//2)
+                # Update particles
+                self.update_particles()
+
+            # Clear screen with gradient background
+            for y in range(SCREEN_HEIGHT):
+                color = (10, 10, 20 + y // 3)
+                pygame.draw.line(self.screen, color, (0, y), (SCREEN_WIDTH, y))
+
+            # Draw walls with unique textures
+            for wall, texture in zip(self.wall_list, self.wall_textures):
+                # Blit the textured surface onto the screen
+                self.screen.blit(texture, wall)
+
+            # Draw exit with pulsing effect
+            pulse = math.sin(pygame.time.get_ticks() * 0.01) * 20
+            exit_rect = pygame.Rect(
+                self.exit_pos.x - GRID_SIZE//4 + pulse, 
+                self.exit_pos.y - GRID_SIZE//4 + pulse, 
+                GRID_SIZE//2 - pulse*2, 
+                GRID_SIZE//2 - pulse*2
+            )
             pygame.draw.rect(self.screen, EXIT_COLOR, exit_rect)
 
             # Create dark overlay
             dark_overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             dark_overlay.fill(DARK_OVERLAY_COLOR)
 
-            # Create and apply light effect if within duration
-            if self.light_timer < self.light_duration:
+            # Create and apply light effect
+            if not self.game_over and self.light_timer < self.light_duration:
                 light_surface = self.light_engine.create_light_surface(
                     (int(self.player_pos.x), int(self.player_pos.y))
                 )
                 dark_overlay.blit(light_surface, (0, 0), special_flags=pygame.BLEND_RGBA_SUB)
 
-                # Calculate distance to exit for sound
-                distance_to_exit = self.player_pos.distance_to(self.exit_pos)
-                max_distance = SCREEN_WIDTH  # Maximum distance for sound volume calculation
-                volume = max(0, min(1, 1 - (distance_to_exit / max_distance)) )  # Normalize volume
-                self.light_engine.buzz_sound.set_volume(volume)
-                self.light_engine.buzz_sound.play(-1)  # Loop the sound
-            else:
-                # If light duration has passed, stop the sound and set volume to 0
-                self.light_engine.buzz_sound.stop()
-                self.light_engine.buzz_sound.set_volume(0)
+            # Draw player with glow
+            pygame.draw.circle(
+                self.screen, 
+                PLAYER_COLOR, 
+                (int(self.player_pos.x), int(self.player_pos.y)), 
+                GRID_SIZE//3
+            )
 
-            # Draw player
-            pygame.draw.rect(self.screen, PLAYER_COLOR, 
-                             pygame.Rect(self.player_pos.x - GRID_SIZE//4, 
-                                         self.player_pos.y - GRID_SIZE//4, 
-                                         GRID_SIZE//2, 
-                                         GRID_SIZE//2))
+            # Draw particles
+            self.draw_particles()
 
             # Apply dark overlay
             self.screen.blit(dark_overlay, (0, 0))
 
+            # Draw HUD
+            self.draw_hud()
+
             # Update display
             pygame.display.flip()
             self.clock.tick(FPS)
+
+            if self.game_won:
+                self.display_level_completion()
+                self.current_level += 1
+                if self.current_level > self.max_levels:
+                    print(f"Congratulations! You've completed all levels with a total score of {self.total_score}!")
+                    running = False
+                else:
+                    self.setup_level()
+                    self.light_engine = LightEngine(SCREEN_WIDTH, SCREEN_HEIGHT, darkness_level=self.current_level)
+                    self.light_timer = 0
+                    self.light_duration = max(10, 20 - (self.current_level * 2))  # Decrease light duration with each level
+                    self.game_over = False
+                    self.game_won = False
 
         pygame.quit()
 
